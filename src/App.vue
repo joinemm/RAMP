@@ -6,7 +6,14 @@
                     <img class="logo" src="./assets/ramp_logo_white.png" />
                 </div>
                 <div class="bottom sidebar">
-                    <Tree />
+                    <Tabs>
+                        <Tab name="Scene" :selected="true">
+                            <Tree />
+                        </Tab>
+                        <Tab name="Selection">
+                            <ObjectView v-bind:object.sync="selected" />
+                        </Tab>
+                    </Tabs>
                 </div>
             </div>
             <div id="right" class="column">
@@ -31,7 +38,7 @@ body {
     padding: 0;
 }
 .logo {
-    max-height: 43px;
+    max-height: 50px;
 }
 #wrapper {
     height: 100%;
@@ -61,7 +68,6 @@ body {
 }
 .top-left {
     background-color: #1a1737;
-    padding: 5px;
 }
 .top {
     flex-shrink: 0;
@@ -91,7 +97,7 @@ body {
     height: 100%;
 }
 .sidebar {
-    padding: 20px;
+    padding: 10px;
 }
 </style>
 
@@ -119,10 +125,13 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import Grid from './objects/grid';
 import Tree from './components/Tree';
+import ObjectView from './components/ObjectView';
+import Tabs from './components/Tabs';
+import Tab from './components/Tab';
 
 export default {
     name: 'App',
-    components: { Tree },
+    components: { Tree, ObjectView, Tabs, Tab },
     data() {
         return {
             camera: null,
@@ -137,6 +146,7 @@ export default {
             selectables: [],
             controls: null,
             loader: null,
+            selected: null,
         };
     },
     methods: {
@@ -226,8 +236,8 @@ export default {
 
             // window events
             window.addEventListener('resize', this.resizeCanvasToDisplaySize, false);
-            window.addEventListener('pointerdown', this.onMouseDown);
-            window.addEventListener('pointerup', this.onMouseUp);
+            container.addEventListener('pointerdown', this.onMouseDown);
+            container.addEventListener('pointerup', this.onMouseUp);
         },
         addShadow(n) {
             if (n.isMesh) {
@@ -291,9 +301,11 @@ export default {
             this.mouse.y = (-event.offsetY / this.renderer.domElement.height) * 2 + 1;
         },
         select(object) {
+            this.selected = object;
             this.transformControls.attach(object);
         },
         deselect() {
+            this.selected = null;
             this.transformControls.detach();
         },
         onMouseDown() {
