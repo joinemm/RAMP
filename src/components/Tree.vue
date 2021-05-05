@@ -1,7 +1,7 @@
 <template>
     <div class="wrapper">
-        <h3>forest</h3>
-        <TreeNode :node="treeData" />
+        <h3>Objects</h3>
+        <TreeNode :node="scene" />
     </div>
 </template>
 
@@ -10,22 +10,7 @@ import TreeNode from './TreeNode';
 export default {
     name: 'Tree',
     components: { TreeNode },
-    data() {
-        return {
-            treeData: {
-                name: 'Scene',
-                children: [
-                    { name: 'Cube' },
-                    { name: 'Chair' },
-                    { name: 'Thingy', children: [{ name: 'subthingy' }] },
-                    {
-                        name: 'Another thingy',
-                        children: [{ name: 'subthingy2' }, { name: 'subthingy3' }],
-                    },
-                ],
-            },
-        };
-    },
+    props: { scene: Object },
 };
 </script>
 

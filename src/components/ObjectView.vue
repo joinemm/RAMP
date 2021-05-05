@@ -3,10 +3,18 @@
         <p v-if="!object">Nothing selected</p>
         <div v-if="object">
             <h3>{{ object.name }}</h3>
-            <p>{{ object.position }}</p>
-            <p>{{ object.rotation }}</p>
-            <button @click="goup">go up</button>
-            <input v-model="object.position.y" />
+            <h4>Position</h4>
+            <div class="inline-inputs">
+                <input v-model="object.position.x" />
+                <input v-model="object.position.y" />
+                <input v-model="object.position.z" />
+            </div>
+            <h4>Rotation</h4>
+            <div class="inline-inputs">
+                <input v-model="object.rotation.x" />
+                <input v-model="object.rotation.y" />
+                <input v-model="object.rotation.z" />
+            </div>
         </div>
     </div>
 </template>
@@ -17,16 +25,19 @@ export default {
     props: {
         object: Object,
     },
-    methods: {
-        goup() {
-            this.object.position.y += 1;
-        },
-    },
+    methods: {},
 };
 </script>
 
 <style scoped>
 .wrapper {
     padding: 10px;
+}
+.inline-inputs {
+    display: flex;
+}
+.inline-inputs input {
+    width: 33%;
+    padding: 0;
 }
 </style>

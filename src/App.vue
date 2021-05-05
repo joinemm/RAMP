@@ -8,7 +8,46 @@
                 <div class="bottom sidebar">
                     <Tabs>
                         <Tab name="Scene" :selected="true">
-                            <Tree />
+                            <Tree v-bind:scene.sync="scene" />
+                            <!-- hardcoded in termporarily -->
+                            <div class="wrapper">
+                                <h3>Robot arm</h3>
+                                <div v-if="transformControls != null">
+                                    <p>Section 3</p>
+                                    <button
+                                        @click="
+                                            structure.joints[0].select(transformControls);
+                                            transformControls.setMode('rotate');
+                                        "
+                                    >
+                                        select
+                                    </button>
+                                </div>
+
+                                <div v-if="transformControls != null">
+                                    <p>Section 2</p>
+                                    <button
+                                        @click="
+                                            structure.joints[1].select(transformControls);
+                                            transformControls.setMode('rotate');
+                                        "
+                                    >
+                                        select
+                                    </button>
+                                </div>
+
+                                <div v-if="transformControls != null">
+                                    <p>Section 1</p>
+                                    <button
+                                        @click="
+                                            structure.joints[2].select(transformControls);
+                                            transformControls.setMode('rotate');
+                                        "
+                                    >
+                                        select
+                                    </button>
+                                </div>
+                            </div>
                         </Tab>
                         <Tab name="Selection">
                             <ObjectView v-bind:object.sync="selected" />
@@ -99,6 +138,9 @@ body {
 .sidebar {
     padding: 10px;
 }
+.wrapper {
+    padding: 10px;
+}
 </style>
 
 <script>
@@ -107,7 +149,6 @@ import {
     Mesh,
     Color,
     FogExp2,
-    MeshStandardMaterial,
     PerspectiveCamera,
     Scene,
     WebGLRenderer,
@@ -119,6 +160,14 @@ import {
     DoubleSide,
     SpotLight,
     HemisphereLight,
+    Box3,
+    Vector3,
+    BoxHelper,
+    AxesHelper,
+    CylinderGeometry,
+    SphereGeometry,
+    Group,
+    Math as THREEMath,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
@@ -129,9 +178,215 @@ import ObjectView from './components/ObjectView';
 import Tabs from './components/Tabs';
 import Tab from './components/Tab';
 
+class Part {
+    // construct me from the given Mesh Factory
+    // the constructor does not set size and mesh yet - use init(mesh) - later to do so
+    constructor(meshFactory) {
+        this.meshFactory = meshFactory;
+        this.mesh = null;
+        this.size = null;
+        this.debug = false;
+    }
+
+    // initialize me with the given Mesh
+    // calulate bounding box and size
+    init(mesh) {
+        this.mesh = mesh;
+        this.name = mesh.name;
+        var bbox = new Box3().setFromObject(this.mesh);
+        this.bbox = bbox;
+        this.size = new Vector3(
+            bbox.max.x - bbox.min.x,
+            bbox.max.y - bbox.min.y,
+            bbox.max.z - bbox.max.z,
+        );
+        if (this.debug)
+            console.log(
+                'bounding box for ' +
+                    this.name +
+                    '=' +
+                    JSON.stringify(bbox.min) +
+                    JSON.stringify(bbox.max),
+            );
+    }
+
+    // add my bounding box wire to the given mesh
+    addBoundingBoxWire(toMesh) {
+        var boxwire = new BoxHelper(this.mesh, 0xff8000);
+        this.boxwire;
+        boxwire.update();
+        toMesh.add(boxwire);
+    }
+
+    // add an AxesHelper with my size to the given mesh
+    addAxesHelper(toMesh) {
+        var axis = new AxesHelper(this.size.length());
+        toMesh.add(axis);
+    }
+
+    // add may bounding box wire and AxesHelper to the given mesh
+    addBoxWireAndAxesHelper(toMesh) {
+        this.addBoundingBoxWire(toMesh);
+        this.addAxesHelper(toMesh);
+    }
+}
+
+// Factory for Meshes with common properties e.g. same material / segments
+class MeshFactory {
+    // create me with the given default material and default segments
+    constructor(material, segments) {
+        this.material = material;
+        this.segments = segments;
+    }
+
+    // creates a cylinder with given radius and height
+    createCylinder(radius, height, cloneMaterial = false) {
+        var cylinderGeometry = new CylinderGeometry(
+            radius,
+            radius,
+            height,
+            this.segments,
+            this.segments,
+        );
+        return this.createMesh(cylinderGeometry, cloneMaterial);
+    }
+
+    // creates a sphere with given radius and height
+    createSphere(radius, cloneMaterial = false) {
+        var sphereGeometry = new SphereGeometry(radius, this.segments, this.segments);
+        return this.createMesh(sphereGeometry, cloneMaterial);
+    }
+
+    // creates a mesh with the given geometry, optionally cloning Material
+    createMesh(geometry, cloneMaterial = false) {
+        var mesh = new Mesh(geometry, this.getMaterial(cloneMaterial));
+        return mesh;
+    }
+
+    // get the material of this factory - when cloned is true clone a copy of the material
+    // for further modification e.g. changing of color
+    getMaterial(cloned) {
+        var material = this.material;
+        if (cloned) material = material.clone();
+        return material;
+    }
+}
+
+// a Joint to be used as a Pivot Point for rotation
+class Joint extends Part {
+    // create me from the given mesh
+    // position me at the given x,y,z position
+    // show pivot sphere with given pivotr radius
+    constructor(meshFactory, mesh, x, y, z, pivotr) {
+        // initialize my attributes
+        super(meshFactory);
+        this.options = null;
+        this.pivotr = pivotr;
+
+        // construct the general Part details from the given mesh
+        super.init(mesh);
+
+        // create the pivot to rotate around/about
+        this.pivot = new Group();
+        this.pivot.add(this.mesh);
+        // shift the pivot position to fit my size + the size of the joint
+        this.pivot.position.set(x, y + this.size.y / 2 + this.pivotr, z + this.size.z / 2);
+        // reposition the mesh accordingly
+        this.mesh.position.set(0, this.size.y / 2, 0);
+
+        // show axes and bounding box wire frame for debugging
+        this.addBoxWireAndAxesHelper(this.pivot);
+
+        // show the pivotJoint
+        this.pivotJoint = this.createPivotJoint();
+        this.pivot.add(this.pivotJoint);
+        // this.shiftPivot();
+    }
+
+    add_to_scene(scene) {
+        scene.add(this.pivot);
+    }
+
+    select(control) {
+        control.attach(this.pivot);
+    }
+
+    createPivotJoint() {
+        var pivot = this.meshFactory.createCylinder(this.pivotr, this.pivotr * 2, true);
+        pivot = this.meshFactory.createSphere(this.pivotr, true);
+        pivot.rotation.z = THREEMath.degToRad(90);
+        pivot.material.color.set('red');
+        return pivot;
+    }
+
+    rotate() {
+        var r = this.pivot.rotation;
+        r.x += 0.001;
+        r.y += 0.001;
+        r.z += 0.001;
+    }
+} // Joint
+
+// a structure consisting of multiple Parts
+class Structure {
+    // construct me from the given options
+    constructor() {
+        this.joints = [];
+    }
+
+    addJoint(joint) {
+        this.joints.push(joint);
+    }
+
+    update() {
+        for (var joint in this.joints) {
+            this.joints[joint].rotate();
+        }
+    }
+}
+
+class Arm extends Part {
+    // construct me from the given meshFactory with the given name, radius and height
+    constructor(scene, meshFactory, name, radius, height) {
+        super(meshFactory);
+        this.radius = radius;
+        this.height = height;
+        this.scene = scene;
+        this.cylinder = meshFactory.createCylinder(radius, height);
+        this.cylinder.name = name;
+        super.init(this.cylinder);
+        // attributes to be fille later
+        this.joint = null;
+    }
+
+    // add my joint and position me at the given x,y,z
+    addJoint(x, y, z) {
+        this.joint = new Joint(this.meshFactory, this.cylinder, x, y, z, this.radius);
+        this.joint.add_to_scene(this.scene);
+    }
+}
+
+function addArms(scene, meshFactory, structure, count) {
+    var radius = 0.1;
+    var height = 0.4;
+
+    for (var i = 1; i <= count; i++) {
+        var arm = new Arm(scene, meshFactory, 'arm' + i, radius, height);
+        var x = 0;
+        var z = 0;
+        var y = height / 2;
+        arm.addJoint(x, y, z);
+        structure.addJoint(arm.joint);
+        if (i > 1) {
+            var previousJoint = structure.joints[i - 2];
+            arm.joint.pivot.add(previousJoint.pivot);
+        }
+    }
+}
+
 export default {
     name: 'App',
-    components: { Tree, ObjectView, Tabs, Tab },
+    components: { ObjectView, Tabs, Tab, Tree },
     data() {
         return {
             camera: null,
@@ -147,6 +402,7 @@ export default {
             controls: null,
             loader: null,
             selected: null,
+            structure: new Structure(),
         };
     },
     methods: {
@@ -159,6 +415,11 @@ export default {
                 0.1,
                 1000,
             );
+            var material = new MeshPhongMaterial({
+                color: 0x0033ff,
+                specular: 0x555555,
+                shininess: 200,
+            });
             this.camera.position.set(5, 5, 5);
             this.camera.lookAt(0, 0, 0);
 
@@ -170,15 +431,12 @@ export default {
             this.loader = new GLTFLoader();
 
             const geometry = new BoxGeometry();
-            const material = new MeshStandardMaterial({
-                color: 0xffc0cb,
-                flatShading: true,
-            });
             this.mesh = new Mesh(geometry, material);
             this.mesh.position.y = 0.5;
 
             this.addShadow(this.mesh);
             this.scene.add(this.mesh);
+            this.mesh.position.set(-3, 0, 3);
             this.selectables.push(this.mesh);
 
             // lights
@@ -204,9 +462,11 @@ export default {
             const material_p = new MeshPhongMaterial({ color: 0xdddddd, side: DoubleSide });
             const plane = new Mesh(geometry_p, material_p);
             plane.rotateX(Math.PI / 2);
+            plane.name = 'Floor';
+            plane.selectable = true;
             this.addShadow(plane);
-            this.scene.add(plane);
-            this.selectables.push(plane);
+            //this.scene.add(plane);
+            //this.selectables.push(plane);
 
             this.renderer = new WebGLRenderer({ antialias: true });
             this.renderer.setSize(container.offsetWidth, container.offsetHeight);
@@ -229,15 +489,27 @@ export default {
                 'dragging-changed',
                 this.toggleControl.bind(this),
             );
+
             this.scene.add(this.transformControls);
 
-            this.spawn('models/glTF/wooden_crate.glb');
-            this.spawn('models/glTF/wooden_chair.glb');
+            this.spawn('models/glTF/wooden_crate.glb', new Vector3(3, 0, -3));
+            this.spawn('models/glTF/wooden_chair.glb', new Vector3(-3, 0, -3));
 
             // window events
             window.addEventListener('resize', this.resizeCanvasToDisplaySize, false);
             container.addEventListener('pointerdown', this.onMouseDown);
             container.addEventListener('pointerup', this.onMouseUp);
+
+            // joints stuff
+            // default material to be used in MeshFactory
+
+            var meshFactory = new MeshFactory(material, 64);
+            addArms(this.scene, meshFactory, this.structure, 3);
+            this.scene.add(new AxesHelper(1.5));
+
+            //this.structure.joints[0].select(this.transformControls);
+
+            // end joints stuff
         },
         addShadow(n) {
             if (n.isMesh) {
@@ -280,6 +552,7 @@ export default {
                 this.mesh.rotation.x += 0.01;
                 this.mesh.rotation.y += 0.02;
             }
+            //this.structure.update();
             this.renderer.render(this.scene, this.camera);
         },
         resizeCanvasToDisplaySize() {
@@ -303,6 +576,7 @@ export default {
         select(object) {
             this.selected = object;
             this.transformControls.attach(object);
+            this.transformControls.setMode('translate');
         },
         deselect() {
             this.selected = null;
@@ -333,7 +607,7 @@ export default {
             }
         },
         // eslint-disable-next-line no-unused-vars
-        spawn(path) {
+        spawn(path, location = new Vector3(0, 0, 0)) {
             this.loader.load(path, (gltf) => {
                 // const scene = this.scene;
                 // const selectables = this.selectables;
@@ -341,6 +615,7 @@ export default {
                     function(child) {
                         if (child.isMesh) {
                             this.scene.add(child);
+                            child.position = location;
                             this.selectables.push(child);
                             this.addShadow(child);
                         }

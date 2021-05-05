@@ -1,12 +1,16 @@
 <template>
-    <div>
+    <div v-if="node != null">
         <div>
             <span class="arrow" @click="expandTree"
-                >{{ node.children ? (expanded ? '[-]' : '[+]') : '|||' }} </span
+                >{{ node.children.length > 0 ? (expanded ? '[-]' : '[+]') : '|||' }} </span
             ><span>{{ node.name }}</span>
         </div>
         <div v-if="expanded" class="children-container">
-            <TreeNode v-for="child in node.children" :key="child.name" :node="child" />
+            <TreeNode
+                v-for="child in node.children.filter((c) => c.isMesh)"
+                :key="child.uuid"
+                :node="child"
+            />
         </div>
     </div>
 </template>
@@ -29,16 +33,3 @@ export default {
     },
 };
 </script>
-
-<style scoped>
-.arrow {
-    cursor: pointer;
-}
-.arrow:hover {
-    font-weight: bold;
-}
-.children-container {
-    border-left: solid 1px grey;
-    padding-left: 20px;
-}
-</style>
