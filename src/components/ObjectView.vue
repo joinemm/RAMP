@@ -11,9 +11,9 @@
             </div>
             <h4>Rotation</h4>
             <div class="inline-inputs">
-                <input v-model="object.rotation.x" />
-                <input v-model="object.rotation.y" />
-                <input v-model="object.rotation.z" />
+                <input v-model="object.rotation.x" :disabled="object.showAxis!=undefined && object.showAxis[0]==false"/>
+                <input v-model="object.rotation.y" :disabled="object.showAxis!=undefined && object.showAxis[1]==false"/>
+                <input v-model="object.rotation.z" :disabled="object.showAxis!=undefined && object.showAxis[2]==false"/>
             </div>
         </div>
     </div>

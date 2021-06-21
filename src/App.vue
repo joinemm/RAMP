@@ -9,45 +9,7 @@
                     <Tabs>
                         <Tab name="Scene" :selected="true">
                             <Tree v-bind:scene.sync="scene" />
-                            <!-- hardcoded in termporarily -->
-                            <div class="wrapper">
-                                <h3>Robot arm</h3>
-                                <div v-if="transformControls != null">
-                                    <p>Section 3</p>
-                                    <button
-                                        @click="
-                                            structure.joints[0].select(transformControls);
-                                            transformControls.setMode('rotate');
-                                        "
-                                    >
-                                        select
-                                    </button>
-                                </div>
-
-                                <div v-if="transformControls != null">
-                                    <p>Section 2</p>
-                                    <button
-                                        @click="
-                                            structure.joints[1].select(transformControls);
-                                            transformControls.setMode('rotate');
-                                        "
-                                    >
-                                        select
-                                    </button>
-                                </div>
-
-                                <div v-if="transformControls != null">
-                                    <p>Section 1</p>
-                                    <button
-                                        @click="
-                                            structure.joints[2].select(transformControls);
-                                            transformControls.setMode('rotate');
-                                        "
-                                    >
-                                        select
-                                    </button>
-                                </div>
-                            </div>
+                            
                         </Tab>
                         <Tab name="Selection">
                             <ObjectView v-bind:object.sync="selected" />
@@ -277,7 +239,7 @@ class Joint extends Part {
     // create me from the given mesh
     // position me at the given x,y,z position
     // show pivot sphere with given pivotr radius
-    constructor(meshFactory, mesh, x, y, z, pivotr) {
+    constructor(meshFactory, mesh, x, y, z, pivotr, axis) {
         // initialize my attributes
         super(meshFactory);
         this.options = null;
@@ -288,6 +250,7 @@ class Joint extends Part {
 
         // create the pivot to rotate around/about
         this.pivot = new Group();
+        this.mesh.selectionTarget = this
         this.pivot.add(this.mesh);
         // shift the pivot position to fit my size + the size of the joint
         this.pivot.position.set(x, y + this.size.y / 2 + this.pivotr, z + this.size.z / 2);
@@ -295,11 +258,14 @@ class Joint extends Part {
         this.mesh.position.set(0, this.size.y / 2, 0);
 
         // show axes and bounding box wire frame for debugging
-        this.addBoxWireAndAxesHelper(this.pivot);
+        //this.addBoxWireAndAxesHelper(this.pivot);
 
         // show the pivotJoint
         this.pivotJoint = this.createPivotJoint();
+        this.pivotJoint.selectionTarget = this
         this.pivot.add(this.pivotJoint);
+        this.pivot.showAxis = axis
+        this.pivot.transformMode = "rotate"
         // this.shiftPivot();
     }
 
@@ -309,21 +275,15 @@ class Joint extends Part {
 
     select(control) {
         control.attach(this.pivot);
+        control.setMode('rotate');
     }
 
     createPivotJoint() {
         var pivot = this.meshFactory.createCylinder(this.pivotr, this.pivotr * 2, true);
         pivot = this.meshFactory.createSphere(this.pivotr, true);
         pivot.rotation.z = THREEMath.degToRad(90);
-        pivot.material.color.set('red');
+        //pivot.material.color.set('red');
         return pivot;
-    }
-
-    rotate() {
-        var r = this.pivot.rotation;
-        r.x += 0.001;
-        r.y += 0.001;
-        r.z += 0.001;
     }
 } // Joint
 
@@ -337,21 +297,16 @@ class Structure {
     addJoint(joint) {
         this.joints.push(joint);
     }
-
-    update() {
-        for (var joint in this.joints) {
-            this.joints[joint].rotate();
-        }
-    }
 }
 
 class Arm extends Part {
     // construct me from the given meshFactory with the given name, radius and height
-    constructor(scene, meshFactory, name, radius, height) {
+    constructor(scene, meshFactory, name, radius, height, axis) {
         super(meshFactory);
         this.radius = radius;
         this.height = height;
         this.scene = scene;
+        this.axis = axis;
         this.cylinder = meshFactory.createCylinder(radius, height);
         this.cylinder.name = name;
         super.init(this.cylinder);
@@ -361,7 +316,7 @@ class Arm extends Part {
 
     // add my joint and position me at the given x,y,z
     addJoint(x, y, z) {
-        this.joint = new Joint(this.meshFactory, this.cylinder, x, y, z, this.radius);
+        this.joint = new Joint(this.meshFactory, this.cylinder, x, y, z, this.radius, this.axis);
         this.joint.add_to_scene(this.scene);
     }
 }
@@ -371,7 +326,8 @@ function addArms(scene, meshFactory, structure, count) {
     var height = 0.4;
 
     for (var i = 1; i <= count; i++) {
-        var arm = new Arm(scene, meshFactory, 'arm' + i, radius, height);
+        var axis = [i%2==0||i==count, false, i%2!=0||i==count]
+        var arm = new Arm(scene, meshFactory, 'arm' + i, radius, height, axis);
         var x = 0;
         var z = 0;
         var y = height / 2;
@@ -380,6 +336,9 @@ function addArms(scene, meshFactory, structure, count) {
         if (i > 1) {
             var previousJoint = structure.joints[i - 2];
             arm.joint.pivot.add(previousJoint.pivot);
+            if (i==count) {
+                arm.joint.pivot.transformMode = "translate"
+            }
         }
     }
 }
@@ -416,7 +375,7 @@ export default {
                 1000,
             );
             var material = new MeshPhongMaterial({
-                color: 0x0033ff,
+                color: 0xb592c2,
                 specular: 0x555555,
                 shininess: 200,
             });
@@ -424,7 +383,7 @@ export default {
             this.camera.lookAt(0, 0, 0);
 
             this.scene = new Scene();
-            this.scene.background = new Color(0xeeeeee);
+            this.scene.background = new Color(0x5b5b5b);
             this.scene.fog = new FogExp2(0x7effee, 0.005);
 
             this.raycaster = new Raycaster();
@@ -435,9 +394,10 @@ export default {
             this.mesh.position.y = 0.5;
 
             this.addShadow(this.mesh);
-            this.scene.add(this.mesh);
-            this.mesh.position.set(-3, 0, 3);
-            this.selectables.push(this.mesh);
+            //this.scene.add(this.mesh);
+            this.mesh.position.set(0, 0, 0);
+            this.mesh.scale.set(0.7, 0.7, 0.7)
+            //this.selectables.push(this.mesh);
 
             // lights
             const ambi = new AmbientLight(0x404050, 0.5);
@@ -489,11 +449,12 @@ export default {
                 'dragging-changed',
                 this.toggleControl.bind(this),
             );
+            this.transformControls.setSpace('local')
 
             this.scene.add(this.transformControls);
 
-            this.spawn('models/glTF/wooden_crate.glb', new Vector3(3, 0, -3));
-            this.spawn('models/glTF/wooden_chair.glb', new Vector3(-3, 0, -3));
+            //this.spawn('models/glTF/wooden_crate.glb', new Vector3(3, 0, -3));
+            //this.spawn('models/glTF/wooden_chair.glb', new Vector3(-3, 0, -3));
 
             // window events
             window.addEventListener('resize', this.resizeCanvasToDisplaySize, false);
@@ -504,10 +465,14 @@ export default {
             // default material to be used in MeshFactory
 
             var meshFactory = new MeshFactory(material, 64);
-            addArms(this.scene, meshFactory, this.structure, 3);
+            addArms(this.scene, meshFactory, this.structure, 4);
             this.scene.add(new AxesHelper(1.5));
 
             //this.structure.joints[0].select(this.transformControls);
+
+            this.structure.joints.forEach(j => {
+                this.selectables.push(j.pivot)
+            });
 
             // end joints stuff
         },
@@ -523,26 +488,27 @@ export default {
         },
         animate() {
             this.controls.update();
-            requestAnimationFrame(this.animate);
 
+            requestAnimationFrame(this.animate);
             // find intersections
 
             if (this.mouse != null) {
                 this.raycaster.setFromCamera(this.mouse, this.camera);
-                const intersects = this.raycaster.intersectObjects(this.selectables);
+                const intersects = this.raycaster.intersectObjects(this.selectables, true);
 
                 if (intersects.length > 0) {
-                    if (this.intersect != intersects[0].object) {
-                        if (this.intersect)
-                            this.intersect.material.emissive.setHex(this.intersect.currentHex);
+                    //console.log(intersects)
+                    //if (this.intersect != intersects[0].object) {
+                        //if (this.intersect)
+//                            this.intersect.material.color.setHex(this.intersect.currentHex);
 
                         this.intersect = intersects[0].object;
-                        this.intersect.currentHex = this.intersect.material.emissive.getHex();
-                        this.intersect.material.emissive.setHex(0x0a0a0a);
-                    }
+                        //this.intersect.currentHex = this.intersect.material.emissive.getHex();
+                        //this.intersect.material.color.setHex(0x0a0a0a);
+                    //}
                 } else {
-                    if (this.intersect)
-                        this.intersect.material.emissive.setHex(this.intersect.currentHex);
+                    //if (this.intersect)
+                        //this.intersect.material.emissive.setHex(this.intersect.currentHex);
 
                     this.intersect = null;
                 }
@@ -600,7 +566,26 @@ export default {
                 // only do selection and deselection if mouse was not dragged
                 // this is to keep orbitcontrol functionality without interfering with selections
                 if (this.intersect != null) {
-                    this.select(this.intersect);
+                    if (this.intersect.selectionTarget != undefined) {
+                        this.intersect.selectionTarget.select(this.transformControls);
+                        this.selected = this.transformControls.object
+                    } else {
+                        this.select(this.intersect);
+                    }
+                    if (this.transformControls.object.showAxis != undefined) {
+                        this.transformControls.showX = this.transformControls.object.showAxis[0];
+                        this.transformControls.showY = this.transformControls.object.showAxis[1];
+                        this.transformControls.showZ = this.transformControls.object.showAxis[2];
+                    } else {
+                       this.transformControls.showX = true; 
+                       this.transformControls.showY = true; 
+                       this.transformControls.showZ = true; 
+                    }
+                    if (this.transformControls.object.transformMode != undefined) {
+                        this.transformControls.setMode(this.transformControls.object.transformMode)
+                    } else {
+                        this.transformControls.setMode("translate")
+                    }
                 } else {
                     this.deselect();
                 }
